@@ -34,7 +34,7 @@
   // 游戏中隐藏真实日期（只显示相对交易日 T+n），真实区间仅在结算页"显示真实日期"揭晓。
   var HIDE = true;
   var GAME_TITLE = '我的模拟人生·A股版';   // 游戏名（多处复用）
-  var GAME_VERSION = 'v20260902.8';   // 构建版本号：每次改动 JS 后累加，便于在网页上核对是否加载到最新代码
+  var GAME_VERSION = 'v20260902.9';   // 构建版本号：每次改动 JS 后累加，便于在网页上核对是否加载到最新代码
 
   // 全局日期轴索引，用于相对交易日换算
   var DAY_IDX = {};
@@ -761,6 +761,7 @@
     // 3) 退出多图对比并刷新下拉（避免残留旧池代码）
     if (multiOn) toggleMulti();
     multiItems = [];
+    if (el('multi-grid')) el('multi-grid').innerHTML = '';   // 同步清掉旧卡片 DOM
     fillMultiAdds();
     toast('已更换股票池，原持仓已按现价平仓');
     renderGame();
@@ -1121,6 +1122,7 @@
       multiView.viewBars = mainChart.viewBars;
       multiView.date = mainChart.data.d[mainChart.endIdx];
       if (!multiItems.length) {
+        el('multi-grid').innerHTML = '';   // 清空历史残留卡片，避免与旧 DOM 叠加成 8 卡
         addMulti('stock', null, S.sel);
         panelSel.forEach(function (k) { addMulti('index', k); });
       }
@@ -1200,10 +1202,12 @@
       if (!it.chart) it.chart = new ChartEng.KChart(it.canvas, { subs: ['vol'], showMa: true, showBoll: false, onView: onMultiView });
       var series = it.kind === 'stock' ? KL.stocks[it.code] : seriesOf(it.key);
       if (!series) return;
-      // 头部（下拉框/标题）与 it.code 保持同步（左侧点股联动时 code 会变）
-      if (it.kind === 'stock' && it.head) {
-        var hsel = it.head.querySelector('.mc-sel');
+      // 头部（标题 + 下拉框）与 it.code 保持同步（左侧点股联动时 code 会变）
+      if (it.head) {
+        var hsel = it.kind === 'stock' ? it.head.querySelector('.mc-sel') : null;
         if (hsel && hsel.value !== it.code) hsel.value = it.code;
+        var ht = it.head.querySelector('.mc-t');
+        if (ht && ht.textContent !== series.name) ht.textContent = series.name;
       }
       var end = seriesEndIdx(series, multiView.date);
       var maxI = seriesEndIdx(series, DAYS[S.curIdx]);   // 防未来函数：不超过当前游戏日
