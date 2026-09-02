@@ -34,7 +34,7 @@
   // 游戏中隐藏真实日期（只显示相对交易日 T+n），真实区间仅在结算页"显示真实日期"揭晓。
   var HIDE = true;
   var GAME_TITLE = '我的模拟人生·A股版';   // 游戏名（多处复用）
-  var GAME_VERSION = 'v20260902.9';   // 构建版本号：每次改动 JS 后累加，便于在网页上核对是否加载到最新代码
+  var GAME_VERSION = 'v20260902.10';   // 构建版本号：每次改动 JS 后累加，便于在网页上核对是否加载到最新代码
 
   // 全局日期轴索引，用于相对交易日换算
   var DAY_IDX = {};
@@ -296,7 +296,9 @@
 
   function drawSelPanels() {
     if (!S) return;
-    var w = el('sel-panels').clientWidth / 2 - 12, h = 200;
+    var w = el('sel-panels').clientWidth / 2 - 12;
+    // 与主图规则一致：高度不超宽度（最高 1:1），避免细长画布
+    var h = Math.max(80, Math.min(200, w));
     var idxOf = function (code) { return S.map[code] ? S.map[code][DAYS[S.curIdx]] : null; };
     // 面板1：当前股票（显示到起始日）
     var st = KL.stocks[S.sel], ei = idxOf(S.sel);
@@ -370,8 +372,10 @@
     var gap = 6, padX = 20;
     var chipW = chipOn ? Math.min(226, Math.max(150, Math.round(wrapW * 0.28))) : 0;
     var cw = Math.max(160, wrapW - chipW - gap - padX);
-    mainChart.resize(cw, ch);
-    if (chipOn) chipChart.resize(chipW, ch);
+    // K线高度自适应：可用高度一旦超过宽度即按宽度封顶（最高宽高比 1:1，拒绝“宽1高2”式细长画布）
+    var chCap = Math.min(ch, Math.max(120, cw));
+    mainChart.resize(cw, chCap);
+    if (chipOn) chipChart.resize(chipW, chCap);
     var mw = el('mini-wrap');
     // 上证指数栏与主图个股 K 线同宽、左缘对齐（两者 padL/padR 一致），K 线横向位置完全对齐
     miniChart.resize(cw, Math.max(60, mw.clientHeight - 30));
@@ -403,17 +407,33 @@
     var i = idxAt(code, date);
     return i == null ? null : KL.stocks[code];
   }
+  // 序列内 <= date 的最近索引（不依赖当前股票池 S.map，历史/已换池标的也安全）
+  function stIdxLe(st, date) {
+    if (!st._dmap) {
+      st._dmap = {};
+      for (var a = 0; a < st.d.length; a++) st._dmap[st.d[a]] = a;
+    }
+    var j = st._dmap[date];
+    if (j != null) return j;
+    var lo = 0, hi = st.d.length - 1, best = -1, dd = st.d;
+    while (lo <= hi) {
+      var mid = (lo + hi) >> 1;
+      if (dd[mid] <= date) { best = mid; lo = mid + 1; } else hi = mid - 1;
+    }
+    return best < 0 ? 0 : best;
+  }
   function lastPx(code, date) {
-    // 停牌时沿用最近一次收盘
-    var st = KL.stocks[code], m = S.map[code];
-    var i = m[date];
-    if (i != null) return st.c[i];
-    var keys = st.d, best = null;
-    for (var q = 0; q < keys.length; q++) { if (keys[q] <= date) best = q; else break; }
-    return best == null ? st.c[0] : st.c[best];
+    var st = KL.stocks[code];
+    if (!st) return 0;
+    var m = S.map[code];
+    if (m) { var i = m[date]; if (i != null) return st.c[i]; }
+    // 不在当前股票池（换池前的历史标的）或当日停牌：取 <= date 最近收盘
+    var q = stIdxLe(st, date);
+    return st.c[q] != null ? st.c[q] : 0;
   }
   function prevClose(code, date) {
     var st = KL.stocks[code], m = S.map[code];
+    if (!st || !m) return null;   // 不在当前池则无前收
     var i = m[date];
     if (i == null) return null;
     return i > 0 ? st.c[i - 1] : st.c[0];
@@ -460,8 +480,9 @@
       var chg = (pc && px) ? (px - pc) / pc * 100 : 0;
       var pl = pos && px ? (px - pos.cost) / pos.cost * 100 : 0;
       html += '<div class="st-item' + (p.code === S.sel ? ' on' : '') + '" data-code="' + p.code + '">' +
-        '<div class="si-l"><div class="si-n">' + p.name + '</div>' +
-        '<div class="si-c">' + (susp ? '<i>停牌</i> ' : '') + '<span class="tag t-' + p.cat + '">' + ({ white: '白马', blue: '蓝筹', monster: '妖股', st: 'ST', cycle: '周期', etf: 'ETF' })[p.cat] + '</span></div></div>' +
+        '<div class="si-l"><div class="si-n"><span class="nm">' + p.name + '</span>' +
+        '<span class="tag t-' + p.cat + '">' + ({ white: '白马', blue: '蓝筹', monster: '妖股', st: 'ST', cycle: '周期', etf: 'ETF' })[p.cat] + '</span></div>' +
+        (susp ? '<div class="si-c"><i>停牌</i></div>' : '') + '</div>' +
         '<div class="si-r"><div class="si-p ' + cls(chg) + '">' + px.toFixed(2) + '</div>' +
         '<div class="si-g ' + cls(chg) + '">' + (susp ? '--' : pct(chg)) + '</div></div>' +
         (pos ? '<div class="si-hold">持' + pos.shares + '股 <span class="' + cls(pl) + '">' + pct(pl) + '</span></div>' : '') +
@@ -535,6 +556,10 @@
   // 统一选股入口：普通模式刷新主界面；多图模式下同步第一张个股卡片跟随切换
   function selectStock(code) {
     if (!code || !KL.stocks[code]) return;
+    // 换池后旧标的已不在本局池内：禁止切入选股（避免误对池外标的交易）
+    if (S && S.pool && !S.pool.some(function (p) { return p.code === code; })) {
+      return toast('该标的不在本局股票池内（已更换股票池）');
+    }
     S.sel = code;
     if (multiOn) {
       Array.prototype.forEach.call(el('stock-list').children, function (node) {
@@ -737,21 +762,47 @@
     el('modal-repool').style.display = 'flex';
   }
   function closeRepoolModal() { el('modal-repool').style.display = 'none'; }
+  // 换池强平时受限持仓（当日买入，T+1 未解锁）→ 按下一可交易日「开盘价」卖出；
+  // 若后续已无交易日（临近收官）则退回当日收盘价
+  function nextOpenSellPx(code) {
+    var date0 = DAYS[S.curIdx];
+    var st = KL.stocks[code], m = S.map[code];
+    var last = Math.min(DAYS.length - 1, S.startIdx + GAME_BARS);
+    for (var d = S.curIdx + 1; d <= last; d++) {
+      var i = m ? m[DAYS[d]] : null;
+      if (i != null) return { px: (st.o[i] != null ? st.o[i] : st.c[i]), di: d };
+    }
+    var cur = m ? m[date0] : null;
+    if (cur != null) return { px: st.c[cur], di: S.curIdx };
+    var q = stIdxLe(st, date0);
+    return { px: st.c[q] != null ? st.c[q] : 0, di: S.curIdx };
+  }
+
+  function closePosForRepool(p) {
+    var code = p.code, amount, fee, px, di = S.curIdx;
+    if (p.buyIdx < S.curIdx) {
+      // 已过 T+1：当日可卖，按当前价成交
+      px = lastPx(code, DAYS[S.curIdx]);
+      di = S.curIdx;
+    } else {
+      // 当日买入未过 T+1：按下一交易日开盘价成交
+      var nq = nextOpenSellPx(code);
+      px = nq.px; di = nq.di;
+    }
+    amount = px * p.shares;
+    fee = Math.max(5, amount * 0.00025) + (KL.stocks[code].cat === 'etf' ? 0 : amount * 0.0005);
+    S.cash += amount - fee;
+    S.trades.push({ code: code, name: KL.stocks[code].name, shares: p.shares, cost: p.cost,
+      sell: px, buyIdx: p.buyIdx, sellIdx: di, pl: (px - p.cost) * p.shares - fee,
+      days: di - p.buyIdx, fee: fee, forced: true });
+  }
+
   function doRepool() {
     closeRepoolModal();
     if (!S || S.over || S.repoolUsed) return;
     S.repoolUsed = true;
-    // 1) 按现价强平全部持仓（与强制平仓同规则计费）
-    var date = DAYS[S.curIdx];
-    S.positions.slice().forEach(function (p) {
-      var px = lastPx(p.code, date);
-      var amount = px * p.shares;
-      var fee = Math.max(5, amount * 0.00025) + (KL.stocks[p.code].cat === 'etf' ? 0 : amount * 0.0005);
-      S.cash += amount - fee;
-      S.trades.push({ code: p.code, name: KL.stocks[p.code].name, shares: p.shares, cost: p.cost,
-        sell: px, buyIdx: p.buyIdx, sellIdx: S.curIdx, pl: (px - p.cost) * p.shares - fee,
-        days: S.curIdx - p.buyIdx, fee: fee, forced: true });
-    });
+    // 1) 清仓全部持仓：过 T+1 的按现价卖；当日买入的按下一交易日开盘价卖
+    S.positions.slice().forEach(closePosForRepool);
     S.positions = [];
     // 2) 重新抽池
     pickPool();
@@ -763,7 +814,7 @@
     multiItems = [];
     if (el('multi-grid')) el('multi-grid').innerHTML = '';   // 同步清掉旧卡片 DOM
     fillMultiAdds();
-    toast('已更换股票池，原持仓已按现价平仓');
+    toast('已更换股票池：已过T+1持仓按现价清仓，当日买入按下一交易日开盘价成交');
     renderGame();
     saveProgress();
   }
@@ -889,53 +940,65 @@
   // ---------- 结算 ----------
   function settle() {
     if (S.over && S.stats) { renderSettle(); return; }
-    S.over = true;
     var date = DAYS[S.curIdx];
-    // 强制平仓所有持仓（按收盘价）
-    var posVal = 0;
-    S.positions.slice().forEach(function (p) {
-      var px = lastPx(p.code, date);
-      posVal += px * p.shares;
-      S.trades.push({ code: p.code, name: KL.stocks[p.code].name, shares: p.shares, cost: p.cost,
-        sell: px, buyIdx: p.buyIdx, sellIdx: S.curIdx, pl: (px - p.cost) * p.shares,
-        days: S.curIdx - p.buyIdx, fee: 0, forced: false });
-    });
-    S.positions = [];
-    var finalEq = S.cash + posVal - S.marginDebt;
-    var totalRet = (finalEq - INIT_CASH) / INIT_CASH * 100;
-    var years = GAME_BARS / 242;
-    var annual = (Math.pow(finalEq / INIT_CASH, 1 / years) - 1) * 100;
-    var r = returns(), sd = std(r);
-    var sh = r.length >= 5 ? (mean(r) * 252 - RF) / (sd * Math.sqrt(252)) : NaN;
-    var mdd = maxDrawdown() * 100;
-    var ab = alphaBeta();
-    var wins = S.trades.filter(function (t) { return t.pl > 0; });
-    var losses = S.trades.filter(function (t) { return t.pl <= 0; });
-    var avgWin = wins.length ? mean(wins.map(function (t) { return t.pl; })) : 0;
-    var avgLoss = losses.length ? mean(losses.map(function (t) { return Math.abs(t.pl); })) : 0;
-    var plRatio = avgLoss > 0 ? avgWin / avgLoss : (avgWin > 0 ? Infinity : 0);
-    // 最大单笔盈利只统计盈利单笔，无盈利交易时为 0
-    var maxWin = wins.length ? Math.max.apply(null, wins.map(function (t) { return t.pl; })) : 0;
-    // 最惨单笔
-    var maxLoss = losses.length ? Math.min.apply(null, losses.map(function (t) { return t.pl; })) : 0;
-    var daysArr = S.trades.map(function (t) { return t.days; });
-    var maxHold = daysArr.length ? Math.max.apply(null, daysArr) : 0;
-    var avgHold = daysArr.length ? mean(daysArr) : 0;
-    var winRate = S.trades.length ? wins.length / S.trades.length * 100 : 0;
-    var benchRet = benchReturn();
-    var abil = abilityScores();
+    // 事务化：先全部算成功再提交；任何异常回滚，避免“换池后结算”把状态置死导致按钮失灵
+    var posBackup = S.positions.slice(), trBackupLen = S.trades.length;
+    try {
+      // 1) 按收盘价生成平仓流水（本地计算，不直接改状态）
+      var posVal = 0, closing = [];
+      posBackup.forEach(function (p) {
+        var px = lastPx(p.code, date);
+        posVal += px * p.shares;
+        closing.push({ code: p.code, name: KL.stocks[p.code].name, shares: p.shares, cost: p.cost,
+          sell: px, buyIdx: p.buyIdx, sellIdx: S.curIdx, pl: (px - p.cost) * p.shares,
+          days: S.curIdx - p.buyIdx, fee: 0, forced: false });
+      });
+      S.trades = S.trades.concat(closing);
+      var finalEq = S.cash + posVal - S.marginDebt;
+      var totalRet = (finalEq - INIT_CASH) / INIT_CASH * 100;
+      var years = GAME_BARS / 242;
+      var annual = (Math.pow(finalEq / INIT_CASH, 1 / years) - 1) * 100;
+      var r = returns(), sd = std(r);
+      var sh = r.length >= 5 ? (mean(r) * 252 - RF) / (sd * Math.sqrt(252)) : NaN;
+      var mdd = maxDrawdown() * 100;
+      var ab = alphaBeta();
+      var wins = S.trades.filter(function (t) { return t.pl > 0; });
+      var losses = S.trades.filter(function (t) { return t.pl <= 0; });
+      var avgWin = wins.length ? mean(wins.map(function (t) { return t.pl; })) : 0;
+      var avgLoss = losses.length ? mean(losses.map(function (t) { return Math.abs(t.pl); })) : 0;
+      var plRatio = avgLoss > 0 ? avgWin / avgLoss : (avgWin > 0 ? Infinity : 0);
+      // 最大单笔盈利只统计盈利单笔，无盈利交易时为 0
+      var maxWin = wins.length ? Math.max.apply(null, wins.map(function (t) { return t.pl; })) : 0;
+      // 最惨单笔
+      var maxLoss = losses.length ? Math.min.apply(null, losses.map(function (t) { return t.pl; })) : 0;
+      var daysArr = S.trades.map(function (t) { return t.days; });
+      var maxHold = daysArr.length ? Math.max.apply(null, daysArr) : 0;
+      var avgHold = daysArr.length ? mean(daysArr) : 0;
+      var winRate = S.trades.length ? wins.length / S.trades.length * 100 : 0;
+      var benchRet = benchReturn();
+      var abil = abilityScores();
 
-    S.stats = {
-      finalEq: finalEq, totalRet: totalRet, annual: annual, sharpe: sh, mdd: mdd,
-      alpha: ab.a, beta: ab.b, plRatio: plRatio, winRate: winRate,
-      maxWin: maxWin, maxLoss: maxLoss, maxHold: maxHold, avgHold: avgHold,
-      wins: wins.length, losses: losses.length, nTrades: S.trades.length,
-      posVal: posVal, benchRet: benchRet, rank: rankOf(sh),
-      timing: abil.timing, timingHit: abil.timingHit,
-      select: abil.select, hitA: abil.hitA, retB: abil.retB, scoreA: abil.scoreA, scoreB: abil.scoreB
-    };
-    saveProgress();   // 结算后也存盘（over 局下次打开可"继续"进结算报告）
-    renderSettle();
+      S.stats = {
+        finalEq: finalEq, totalRet: totalRet, annual: annual, sharpe: sh, mdd: mdd,
+        alpha: ab.a, beta: ab.b, plRatio: plRatio, winRate: winRate,
+        maxWin: maxWin, maxLoss: maxLoss, maxHold: maxHold, avgHold: avgHold,
+        wins: wins.length, losses: losses.length, nTrades: S.trades.length,
+        posVal: posVal, benchRet: benchRet, rank: rankOf(sh),
+        timing: abil.timing, timingHit: abil.timingHit,
+        select: abil.select, hitA: abil.hitA, retB: abil.retB, scoreA: abil.scoreA, scoreB: abil.scoreB
+      };
+      // 2) 全部算完才提交
+      S.positions = [];
+      S.over = true;
+      saveProgress();   // 结算后也存盘（over 局下次打开可"继续"进结算报告）
+      renderSettle();
+    } catch (e) {
+      S.positions = posBackup;
+      S.trades.length = trBackupLen;
+      S.over = false;
+      console.error('[结算] 计算异常：', e);
+      toast('结算计算异常，请重试');
+    }
   }
 
   // 同期沪深300涨幅（对照基准）
@@ -1199,6 +1262,8 @@
     multiItems.forEach(function (it) {
       var headH = it.head ? it.head.offsetHeight : 24;
       var h = Math.max(80, rowH - headH - 6);
+      // 与主图同规则：卡高不超卡宽（最高 1:1），多余高度留给网格底部
+      h = Math.min(h, cw - 2);
       if (!it.chart) it.chart = new ChartEng.KChart(it.canvas, { subs: ['vol'], showMa: true, showBoll: false, onView: onMultiView });
       var series = it.kind === 'stock' ? KL.stocks[it.code] : seriesOf(it.key);
       if (!series) return;
