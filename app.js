@@ -1,5 +1,5 @@
 /* app.js — 《我的模拟人生·A股版》游戏逻辑
- * 依赖: window.GAME_KLINE / GAME_INDEX / GAME_CHIPS / GAME_NEWS / ChartEng
+ * 依赖: window.GAME_KLINE / GAME_INDEX / GAME_ETF / GAME_CHIPS / GAME_NEWS / ChartEng
  */
 (function (global) {
   'use strict';
@@ -7,6 +7,9 @@
   var KL = global.GAME_KLINE, IX = global.GAME_INDEX,
       CH = global.GAME_CHIPS, NW = global.GAME_NEWS || { market: [], stocks: {} };
   var OV = global.GAME_OAMV ? global.GAME_OAMV.series : null;
+  var ET = global.GAME_ETF ? global.GAME_ETF.etfs : {};
+  // 把 20 只 ETF 注入股票池（cat='etf'），pickPool 每局抽 3 只与股票同场交易
+  Object.keys(ET).forEach(function (c) { if (!KL.stocks[c]) KL.stocks[c] = ET[c]; });
   var DAYS = IX.sh_index.d;                 // 全局日期轴（交易日）
   var TOTAL_BARS = DAYS.length;
   var GAME_BARS = 242;                      // 一局约365自然日
@@ -18,15 +21,20 @@
     { k: 'a50', n: '上证50' }, { k: 'hs300', n: '沪深300' },
     { k: 'zz500', n: '中证500' }, { k: 'zz1000', n: '中证1000' },
     { k: 'zz2000', n: '中证2000(微盘)' }, { k: 'nasdaq_etf', n: '纳指ETF' },
-    { k: 'sp500_etf', n: '标普ETF' }
+    { k: 'sp500_etf', n: '标普ETF' },
+    { k: 'etf_518880', n: '黄金ETF' }, { k: 'etf_513180', n: '恒生科技ETF' },
+    { k: 'etf_512000', n: '券商ETF' }
   ].concat(OV ? [{ k: 'oamv', n: '0AMV 活跃市值' }] : []);
 
-  function seriesOf(k) { return k === 'oamv' ? OV : IX[k]; }
+  function seriesOf(k) {
+    if (k && k.indexOf('etf_') === 0) return ET[k.slice(4)] || null;
+    return k === 'oamv' ? OV : IX[k];
+  }
 
   // 游戏中隐藏真实日期（只显示相对交易日 T+n），真实区间仅在结算页"显示真实日期"揭晓。
   var HIDE = true;
   var GAME_TITLE = '我的模拟人生·A股版';   // 游戏名（多处复用）
-  var GAME_VERSION = 'v20260902.3';   // 构建版本号：每次改动 JS 后累加，便于在网页上核对是否加载到最新代码
+  var GAME_VERSION = 'v20260902.5';   // 构建版本号：每次改动 JS 后累加，便于在网页上核对是否加载到最新代码
 
   // 全局日期轴索引，用于相对交易日换算
   var DAY_IDX = {};
@@ -85,7 +93,7 @@
       v: 1, g: GAME_VERSION,
       startIdx: S.startIdx, curIdx: S.curIdx, day: S.day, cash: S.cash,
       md: S.marginDebt, mu: S.marginUsed, mu2: S.marginUnlocked,
-      over: S.over, revealed: S.revealed, sel: S.sel,
+      over: S.over, revealed: S.revealed, sel: S.sel, rp: S.repoolUsed ? 1 : 0,
       pool: S.pool.map(function (p) { return p.code; }),
       pos: S.positions.map(function (p) { return [p.code, p.shares, p.cost, p.buyIdx]; }),
       tr: S.trades.map(function (t) {
@@ -148,7 +156,7 @@
       startIdx: o.startIdx, curIdx: o.curIdx, day: o.day, cash: o.cash,
       marginDebt: o.md, marginUsed: o.mu, positions: [], trades: [], equity: [],
       map: map, pool: pool, sel: o.sel, marginUnlocked: o.mu2,
-      over: o.over, revealed: o.revealed, stats: o.stats
+      over: o.over, revealed: o.revealed, stats: o.stats, repoolUsed: !!o.rp
     };
     S.positions = (o.pos || []).map(function (a) {
       return { code: a[0], shares: a[1], cost: a[2], buyIdx: a[3] };
@@ -209,7 +217,7 @@
       cash: INIT_CASH, marginDebt: 0, marginUsed: 0,
       positions: [], trades: [], equity: [], map: {},
       pool: [], sel: null, marginUnlocked: false, over: false,
-      revealed: false, stats: null
+      revealed: false, stats: null, repoolUsed: false
     };
     pickPool();
     S.map = {};
@@ -218,14 +226,18 @@
     renderSelect();
   }
 
-  // 抽 15 只：白马3 / 蓝筹3 / 妖股3 / ST2 / 周期4，同行业≤2
+  // 抽 18 只：白马3 / 蓝筹3 / 妖股3 / ST2 / 周期4 / ETF3，同行业≤2
+  // ETF 需在本局起始日前已上市（首根K线 <= 起始日），避免未上市标的提前泄露价格
   function pickPool() {
-    var byCat = { white: [], blue: [], monster: [], st: [], cycle: [] };
+    var byCat = { white: [], blue: [], monster: [], st: [], cycle: [], etf: [] };
+    var startD = DAYS[S.startIdx];
     Object.keys(KL.stocks).forEach(function (c) {
       var s = KL.stocks[c];
-      if (byCat[s.cat]) byCat[s.cat].push({ code: c, name: s.name, ind: s.ind, cat: s.cat });
+      if (!byCat[s.cat]) return;
+      if (s.cat === 'etf' && s.d[0] > startD) return;
+      byCat[s.cat].push({ code: c, name: s.name, ind: s.ind, cat: s.cat });
     });
-    var need = { white: 3, blue: 3, monster: 3, st: 2, cycle: 4 };
+    var need = { white: 3, blue: 3, monster: 3, st: 2, cycle: 4, etf: 3 };
     var pool = [];
     Object.keys(need).forEach(function (cat) {
       var arr = byCat[cat].slice(), got = 0, guard = 0;
@@ -263,7 +275,7 @@
       var px = i != null ? st.c[i] : null;
       html += '<div class="pool-item' + (p.code === S.sel ? ' on' : '') + '" data-code="' + p.code + '">' +
         '<div class="pi-name">' + p.name + '<span class="tag t-' + p.cat + '">' +
-        ({ white: '白马', blue: '蓝筹', monster: '妖股', st: 'ST', cycle: '周期' })[p.cat] + '</span></div>' +
+        ({ white: '白马', blue: '蓝筹', monster: '妖股', st: 'ST', cycle: '周期', etf: 'ETF' })[p.cat] + '</span></div>' +
         '<div class="pi-code">' + p.code + ' · ' + p.ind + '</div>' +
         '<div class="pi-px">' + (px != null ? px.toFixed(2) : '停牌') + '</div></div>';
     });
@@ -422,6 +434,8 @@
     el('hud-cash').textContent = money(S.cash);
     el('hud-ret').textContent = pct(ret);
     el('hud-ret').className = cls(ret);
+    // 更换股票池按钮：用过即隐藏
+    el('btn-repool').style.display = S.repoolUsed ? 'none' : '';
 
     // 主图 / 筹码峰 / 大盘
     var mi = i != null ? i : lastIdxBefore(S.sel, date);   // 当前游戏日（个股序列）下标
@@ -446,7 +460,7 @@
       var pl = pos && px ? (px - pos.cost) / pos.cost * 100 : 0;
       html += '<div class="st-item' + (p.code === S.sel ? ' on' : '') + '" data-code="' + p.code + '">' +
         '<div class="si-l"><div class="si-n">' + p.name + '</div>' +
-        '<div class="si-c">' + p.code + (susp ? ' <i>停牌</i>' : '') + ' <span class="tag t-' + p.cat + '">' + ({ white: '白马', blue: '蓝筹', monster: '妖股', st: 'ST', cycle: '周期' })[p.cat] + '</span></div></div>' +
+        '<div class="si-c">' + p.code + (susp ? ' <i>停牌</i>' : '') + ' <span class="tag t-' + p.cat + '">' + ({ white: '白马', blue: '蓝筹', monster: '妖股', st: 'ST', cycle: '周期', etf: 'ETF' })[p.cat] + '</span></div></div>' +
         '<div class="si-r"><div class="si-p ' + cls(chg) + '">' + px.toFixed(2) + '</div>' +
         '<div class="si-g ' + cls(chg) + '">' + (susp ? '--' : pct(chg)) + '</div></div>' +
         (pos ? '<div class="si-hold">持' + pos.shares + '股 <span class="' + cls(pl) + '">' + pct(pl) + '</span></div>' : '') +
@@ -477,21 +491,46 @@
 
   function renderPos() {
     var date = DAYS[S.curIdx];
-    if (!S.positions.length) { el('pos-list').innerHTML = '<div class="empty">暂无持仓</div>'; return; }
     var h = '';
-    S.positions.forEach(function (p) {
-      var px = lastPx(p.code, date), st = KL.stocks[p.code];
-      var mv = px * p.shares, cost = p.cost * p.shares;
-      var pl = mv - cost, plr = pl / cost * 100;
-      var days = S.curIdx - p.buyIdx;
-      h += '<div class="pos-item" data-code="' + p.code + '">' +
-        '<div class="po-n">' + st.name + '<span class="po-d">' + days + '天</span></div>' +
-        '<div class="po-p">成本' + p.cost.toFixed(2) + ' 现价' + px.toFixed(2) + '</div>' +
-        '<div class="po-pl ' + cls(pl) + '">' + money(pl) + ' (' + pct(plr) + ')</div></div>';
-    });
+    // ---- 当前持仓（上） ----
+    if (!S.positions.length) {
+      h += '<div class="empty">暂无持仓</div>';
+    } else {
+      S.positions.forEach(function (p) {
+        var px = lastPx(p.code, date), st = KL.stocks[p.code];
+        var mv = px * p.shares, cost = p.cost * p.shares;
+        var pl = mv - cost, plr = pl / cost * 100;
+        var days = S.curIdx - p.buyIdx;
+        h += '<div class="pos-item" data-code="' + p.code + '">' +
+          '<div class="po-n">' + st.name + '<span class="po-d">' + days + '天</span></div>' +
+          '<div class="po-p">持仓' + p.shares + '股 · 成本' + p.cost.toFixed(2) + ' 现价' + px.toFixed(2) + '</div>' +
+          '<div class="po-pl ' + cls(pl) + '">' + money(pl) + ' (' + pct(plr) + ')</div></div>';
+      });
+    }
+    // ---- 历史交易记录（下，同一滚动框，最新在上） ----
+    h += '<div class="tr-hd">交易记录 · ' + S.trades.length + ' 笔</div>';
+    if (!S.trades.length) {
+      h += '<div class="empty">暂无交易</div>';
+    } else {
+      S.trades.slice().reverse().forEach(function (t) {
+        var r2 = (t.sell - t.cost) / t.cost * 100;
+        h += '<div class="pl-tr" data-code="' + t.code + '">' +
+          '<span class="tn">' + t.name + '</span>' +
+          '<span class="ti">' + t.shares + '股 · ' + t.days + '天</span>' +
+          '<span class="tp ' + cls(t.pl) + '">' + money(t.pl) + ' (' + pct(r2) + ')</span>' +
+          (t.forced ? '<span class="forced">强平</span>' : '') + '</div>';
+      });
+    }
     el('pos-list').innerHTML = h;
-    Array.prototype.forEach.call(el('pos-list').children, function (node) {
+    el('pos-cnt').textContent = '持' + S.positions.length + '只 · ' + S.trades.length + '笔';
+    Array.prototype.forEach.call(el('pos-list').querySelectorAll('.pos-item'), function (node) {
       node.onclick = function () { S.sel = node.getAttribute('data-code'); renderGame(); };
+    });
+    Array.prototype.forEach.call(el('pos-list').querySelectorAll('.pl-tr'), function (node) {
+      node.onclick = function () {
+        var c = node.getAttribute('data-code');
+        if (KL.stocks[c]) { S.sel = c; renderGame(); }
+      };
     });
   }
 
@@ -575,7 +614,7 @@
     if (!shares || shares <= 0) return toast('请输入卖出数量（手）');
     if (shares > pos.shares) shares = pos.shares;
     var amount = px * shares;
-    var fee = Math.max(5, amount * 0.00025) + amount * 0.0005 + amount * 0.00001;
+    var fee = Math.max(5, amount * 0.00025) + (st.cat === 'etf' ? 0 : amount * 0.0005) + amount * 0.00001;
     S.cash += amount - fee;
     S.trades.push({
       code: code, name: st.name, shares: shares,
@@ -632,7 +671,7 @@
     S.positions.slice().forEach(function (p) {
       var px = lastPx(p.code, date);
       var amount = px * p.shares;
-      var fee = Math.max(5, amount * 0.00025) + amount * 0.0005;
+      var fee = Math.max(5, amount * 0.00025) + (KL.stocks[p.code].cat === 'etf' ? 0 : amount * 0.0005);
       S.cash += amount - fee;
       S.trades.push({ code: p.code, name: KL.stocks[p.code].name, shares: p.shares, cost: p.cost,
         sell: px, buyIdx: p.buyIdx, sellIdx: S.curIdx, pl: (px - p.cost) * p.shares - fee,
@@ -657,6 +696,43 @@
     S.cash -= pay; S.marginDebt -= pay;
     toast('还款 ' + money(pay));
     renderGame();
+  }
+
+  // ---------- 更换股票池（每局一次） ----------
+  function openRepoolModal() {
+    if (!S || S.over) return;
+    if (S.repoolUsed) return toast('本局已使用过更换股票池');
+    el('modal-repool').style.display = 'flex';
+  }
+  function closeRepoolModal() { el('modal-repool').style.display = 'none'; }
+  function doRepool() {
+    closeRepoolModal();
+    if (!S || S.over || S.repoolUsed) return;
+    S.repoolUsed = true;
+    // 1) 按现价强平全部持仓（与强制平仓同规则计费）
+    var date = DAYS[S.curIdx];
+    S.positions.slice().forEach(function (p) {
+      var px = lastPx(p.code, date);
+      var amount = px * p.shares;
+      var fee = Math.max(5, amount * 0.00025) + (KL.stocks[p.code].cat === 'etf' ? 0 : amount * 0.0005);
+      S.cash += amount - fee;
+      S.trades.push({ code: p.code, name: KL.stocks[p.code].name, shares: p.shares, cost: p.cost,
+        sell: px, buyIdx: p.buyIdx, sellIdx: S.curIdx, pl: (px - p.cost) * p.shares - fee,
+        days: S.curIdx - p.buyIdx, fee: fee, forced: true });
+    });
+    S.positions = [];
+    // 2) 重新抽池
+    pickPool();
+    S.map = {};
+    S.pool.forEach(function (p) { S.map[p.code] = buildMap(KL.stocks[p.code]); });
+    S.sel = S.pool[0].code;
+    // 3) 退出多图对比并刷新下拉（避免残留旧池代码）
+    if (multiOn) toggleMulti();
+    multiItems = [];
+    fillMultiAdds();
+    toast('已更换股票池，原持仓已按现价平仓');
+    renderGame();
+    saveProgress();
   }
 
   // ---------- 统计 ----------
@@ -930,6 +1006,10 @@
     el('modal-settle-ok').onclick = function () { closeSettleModal(); settle(); };
     el('btn-compare').onclick = toggleMulti;
     el('btn-compare-off').onclick = toggleMulti;
+    el('btn-repool').onclick = openRepoolModal;
+    el('modal-repool-cancel').onclick = closeRepoolModal;
+    el('modal-repool-ok').onclick = doRepool;
+    el('modal-repool').addEventListener('click', function (e) { if (e.target === this) closeRepoolModal(); });
     el('multi-add-ix').onchange = function () { if (this.value) { addMulti('index', this.value); this.value = ''; } };
     el('multi-add-st').onchange = function () { if (this.value) { addMulti('stock', null, this.value); this.value = ''; } };
     el('modal-settle').addEventListener('click', function (e) { if (e.target === this) closeSettleModal(); });
@@ -940,6 +1020,7 @@
     document.addEventListener('keydown', function (e) {
       if (el('screen-game').style.display === 'none') return;
       if (el('modal-settle').style.display !== 'none') return;
+      if (el('modal-repool').style.display !== 'none') return;
       if (multiOn) return;
       if (e.key === 'ArrowRight') nextDay(1);
       if (e.key === 'ArrowDown') nextDay(5);

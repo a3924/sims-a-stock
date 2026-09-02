@@ -48,6 +48,7 @@ input,select{background:var(--bg);color:var(--text);border:1px solid var(--line)
 .t-white{background:#1f6feb33;color:#79c0ff} .t-blue{background:#8957e533;color:#d2a8ff}
 .t-monster{background:#bb800933;color:#f0b90b} .t-st{background:#da363333;color:#ff7b72}
 .t-cycle{background:#3fb95033;color:#7ee787}
+.t-etf{background:#f0883e33;color:#f0883e}
 .sel-right{flex:1;display:flex;flex-direction:column;min-height:0}
 #panel-sels{display:flex;gap:8px;margin-bottom:8px;align-items:center}
 #panel-sels span{color:var(--dim);font-size:12px}
@@ -74,6 +75,13 @@ input,select{background:var(--bg);color:var(--text);border:1px solid var(--line)
 .col-hd{padding:7px 10px;color:var(--dim);font-size:12px;border-bottom:1px solid var(--line);
   background:var(--panel);display:flex;justify-content:space-between;align-items:center}
 #stock-list,#pos-list{flex:1;overflow:auto}
+#pos-list{flex:0 0 auto;max-height:56%}
+.tr-hd{color:var(--acc);font-size:11px;font-weight:600;padding:8px 10px 4px;border-top:1px solid var(--line);margin-top:4px}
+.pl-tr{display:flex;gap:8px;padding:5px 10px;border-bottom:1px solid #21262d;font-size:11px;cursor:pointer;align-items:center}
+.pl-tr:hover{background:var(--panel2)}
+.pl-tr .tn{width:74px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pl-tr .ti{color:var(--dim);white-space:nowrap}
+.pl-tr .tp{margin-left:auto;font-family:ui-monospace,Consolas,monospace;white-space:nowrap}
 .st-item{padding:6px 10px;border-bottom:1px solid var(--line);cursor:pointer;
   display:flex;justify-content:space-between;align-items:center;gap:4px;position:relative}
 .st-item:hover{background:var(--panel2)}
@@ -188,10 +196,10 @@ input,select{background:var(--bg);color:var(--text);border:1px solid var(--line)
 
 <!-- ============ 选股界面 ============ -->
 <div id="screen-select">
-  <h1>我的模拟人生·A股版 <small>2021-2026 真实日K · 130只股票池 · 20万本金 · 365天</small></h1>
+  <h1>我的模拟人生·A股版 <small>2021-2026 真实日K · 130只股票 + 20只ETF · 20万本金 · 365天</small></h1>
   <div class="sel-body">
     <div class="sel-left">
-      <div class="hd">本局可交易 15 只（同行业≤2）</div>
+      <div class="hd">本局可交易 18 只（含3只ETF · 同行业≤2）</div>
       <div id="pool-list"></div>
     </div>
     <div class="sel-right">
@@ -222,6 +230,7 @@ input,select{background:var(--bg);color:var(--text);border:1px solid var(--line)
     <div class="hud"><span class="lb">总收益率</span><span class="vl" id="hud-ret">--</span></div>
     <div class="spacer"></div>
     <span id="ver-badge" class="ver" title="构建版本"></span>
+    <button id="btn-repool" title="按现价强平全部持仓并重新抽取18只标的，每局限一次">更换股票池(1次)</button>
     <button id="btn-compare">多图切换</button>
     <button id="btn-settle">结算本局游戏</button>
     <button id="btn-clear" title="清除浏览器中的存档">清除存档</button>
@@ -232,7 +241,7 @@ input,select{background:var(--bg);color:var(--text);border:1px solid var(--line)
 
   <div class="game-body">
     <div class="col-left">
-      <div class="col-hd"><span>自选池</span><span>15只</span></div>
+      <div class="col-hd"><span>自选池</span><span>18只</span></div>
       <div id="stock-list"></div>
     </div>
 
@@ -290,8 +299,8 @@ input,select{background:var(--bg);color:var(--text);border:1px solid var(--line)
     </div>
 
     <div class="col-right">
-      <div class="col-hd"><span>持仓</span></div>
-      <div id="pos-list" style="max-height:34%"></div>
+      <div class="col-hd"><span>持仓 · 交易记录</span><span id="pos-cnt"></span></div>
+      <div id="pos-list"></div>
       <div class="col-hd"><span>新闻 · 右上角</span></div>
       <div id="news-box"></div>
     </div>
@@ -316,9 +325,22 @@ input,select{background:var(--bg);color:var(--text);border:1px solid var(--line)
   </div>
 </div>
 
+<!-- ============ 更换股票池确认弹窗 ============ -->
+<div id="modal-repool" class="modal-mask" style="display:none">
+  <div class="modal-box">
+    <div class="modal-title">更换股票池？</div>
+    <div class="modal-msg">将按当前价格强制平仓全部持仓（按强平规则计费），然后重新随机抽取 18 只标的（含 3 只 ETF）。<b style="color:var(--warn)">每局仅可使用一次，使用后不可恢复。</b>确定使用吗？</div>
+    <div class="modal-btns">
+      <button id="modal-repool-cancel">取消</button>
+      <button id="modal-repool-ok" class="primary">确认更换</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script src="data_kline.js"></script>
+<script src="data_etf.js"></script>
 <script src="data_index.js"></script>
 <script src="data_oamv.js"></script>
 <script src="data_chips.js"></script>
