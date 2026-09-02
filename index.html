@@ -86,9 +86,10 @@ input,select{background:var(--bg);color:var(--text);border:1px solid var(--line)
   display:flex;justify-content:space-between;align-items:center;gap:4px;position:relative}
 .st-item:hover{background:var(--panel2)}
 .st-item.on{background:#1f6feb22;border-left:3px solid var(--acc)}
-.si-l{flex:1;min-width:0}
-.si-n{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.si-c{color:var(--dim);font-size:10px}
+.si-l{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center}
+.si-n{display:flex;align-items:center;gap:5px;font-size:14px;font-weight:700;line-height:1.25}
+.si-n .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.si-c{color:var(--dim);font-size:10px;margin-top:1px}
 .si-c i{color:var(--warn);font-style:normal}
 .si-r{text-align:right;font-family:ui-monospace,Consolas,monospace}
 .si-p{font-size:13px}
@@ -97,7 +98,7 @@ input,select{background:var(--bg);color:var(--text);border:1px solid var(--line)
 #chart-tools{display:flex;gap:6px;padding:6px 10px;border-bottom:1px solid var(--line);
   align-items:center;background:var(--panel)}
 #chart-tools .lb{color:var(--dim);font-size:11px;margin-right:2px}
-#chart-wrap{flex:1;display:flex;gap:6px;padding:6px 10px;min-height:0}
+#chart-wrap{flex:1;display:flex;gap:6px;padding:6px 10px;min-height:0;align-items:center}
 #main-chart,#chip-chart{border-radius:6px;background:var(--panel)}
 #mini-wrap{height:146px;padding:0 10px 6px;display:flex;flex-direction:column}
 #mini-hd{display:flex;align-items:center;gap:8px;padding:0 2px 4px}
@@ -105,16 +106,24 @@ input,select{background:var(--bg);color:var(--text);border:1px solid var(--line)
 #mini-hd select{font-size:11px;padding:1px 6px}
 #mini-val{font-size:11px;font-family:ui-monospace,Consolas,monospace;margin-left:auto;color:var(--dim)}
 #mini-chart{border-radius:6px;background:var(--panel);width:100%;display:block}
-#trade-panel{position:fixed;right:20px;bottom:26px;z-index:80;border:1px solid var(--line);
-  border-radius:12px;padding:10px 14px;background:linear-gradient(180deg,#1b2230,#161b22);
+#trade-panel{position:fixed;right:20px;bottom:22px;z-index:80;width:334px;
+  border:1px solid var(--line);border-radius:10px;padding:8px 10px 5px;
+  background:linear-gradient(180deg,#1b2230,#161b22);
   box-shadow:0 14px 38px #000c,0 3px 10px #0009,0 0 0 1px #58a6ff22;
-  opacity:.96;transition:opacity .15s;border-top:2px solid var(--acc);
-  cursor:default;user-select:none}
-#trade-panel:hover{opacity:1;box-shadow:0 16px 44px #000e,0 4px 12px #000a,0 0 0 1px #58a6ff33}
-.tp-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+  border-top:2px solid var(--acc);
+  cursor:default;user-select:none;transition:box-shadow .15s}
+#trade-panel:hover{box-shadow:0 16px 44px #000e,0 4px 12px #000a,0 0 0 1px #58a6ff33}
+#trade-panel button{padding:4px 7px;font-size:11px;line-height:1.3}
+#trade-panel input{width:58px;padding:3px 5px;font-size:12px}
+.tp-row{display:flex;align-items:center;gap:6px;margin-bottom:5px;flex-wrap:nowrap;white-space:nowrap}
 .tp-row .n{color:var(--dim);font-size:11px}
-#tb-name{font-weight:600}
-#tb-px{font-family:ui-monospace,Consolas,monospace;color:var(--warn)}
+.tp-row .n b{color:var(--text);font-weight:600;font-family:ui-monospace,Consolas,monospace}
+#tb-name{font-weight:600;font-size:12px;max-width:120px;overflow:hidden;text-overflow:ellipsis}
+#tb-px{font-family:ui-monospace,Consolas,monospace;color:var(--warn);font-weight:600}
+.tp-limit{color:var(--dim);font-size:10px;margin-left:auto;overflow:hidden;text-overflow:ellipsis}
+.tp-frac{gap:4px}
+.tp-frac .grp{display:flex;gap:4px;align-items:center}
+.tp-frac .sep{width:1px;height:16px;background:var(--line);margin:0 2px}
 #news-box{flex:1;overflow:auto;padding:8px 10px}
 .news-date{color:var(--dim);font-size:11px;margin-bottom:6px}
 .news-hint{color:var(--acc);font-size:11px;margin:8px 0 4px;font-weight:600}
@@ -235,7 +244,7 @@ input,select{background:var(--bg);color:var(--text);border:1px solid var(--line)
     <div class="hud"><span class="lb">总收益率</span><span class="vl" id="hud-ret">--</span></div>
     <div class="spacer"></div>
     <span id="ver-badge" class="ver" title="构建版本"></span>
-    <button id="btn-repool" title="按现价强平全部持仓并重新抽取18只标的，每局限一次">更换股票池(1次)</button>
+    <button id="btn-repool" title="清仓全部持仓（当日买入按次日开盘价卖出）并重新抽取18只标的，每局限一次">更换股票池(1次)</button>
     <button id="btn-compare">多图切换</button>
     <button id="btn-settle">结算本局游戏</button>
     <button id="btn-clear" title="清除浏览器中的存档">清除存档</button>
@@ -287,25 +296,32 @@ input,select{background:var(--bg);color:var(--text);border:1px solid var(--line)
         <div class="tp-row">
           <span id="tb-name">--</span>
           <span id="tb-px">--</span>
-          <span class="n" id="tb-limit"></span>
+          <span class="tp-limit" id="tb-limit"></span>
+        </div>
+        <div class="tp-row">
           <span class="n">可用 <b id="tb-avail"></b></span>
           <span class="n">持仓 <b id="tb-hold"></b></span>
           <span class="n">可卖 <b id="tb-sellable"></b></span>
         </div>
         <div class="tp-row">
           <span class="n">数量</span>
-          <input id="tb-num" type="number" value="1" min="1" step="1" style="width:70px">
+          <input id="tb-num" type="number" value="1" min="1" step="1">
           <span class="n">手</span>
           <button id="btn-buy">买入(B)</button>
           <button id="btn-sell">卖出(S)</button>
-          <button id="btn-buymax">全仓买</button>
-          <button id="btn-sellall">全卖</button>
         </div>
-        <div class="tp-row">
-          <button id="btn-buyhalf">半仓买</button>
-          <button id="btn-sellhalf">半仓卖</button>
-          <button id="btn-buyquarter">1/4买</button>
-          <button id="btn-sellquarter">1/4卖</button>
+        <div class="tp-row tp-frac">
+          <span class="grp">
+            <button id="btn-buymax" title="全仓买入">全仓买</button>
+            <button id="btn-buyhalf" title="按可用资金一半买入">半仓买</button>
+            <button id="btn-buyquarter" title="按可用资金1/4买入">1/4买</button>
+          </span>
+          <span class="sep"></span>
+          <span class="grp">
+            <button id="btn-sellall" title="清仓卖出">全卖</button>
+            <button id="btn-sellhalf" title="卖出持仓一半">半仓卖</button>
+            <button id="btn-sellquarter" title="卖出持仓1/4">1/4卖</button>
+          </span>
         </div>
       </div>
     </div>
@@ -341,7 +357,7 @@ input,select{background:var(--bg);color:var(--text);border:1px solid var(--line)
 <div id="modal-repool" class="modal-mask" style="display:none">
   <div class="modal-box">
     <div class="modal-title">更换股票池？</div>
-    <div class="modal-msg">将按当前价格强制平仓全部持仓（按强平规则计费），然后重新随机抽取 18 只标的（含 3 只 ETF）。<b style="color:var(--warn)">每局仅可使用一次，使用后不可恢复。</b>确定使用吗？</div>
+    <div class="modal-msg">将清仓全部持仓后重新随机抽取 18 只标的（含 3 只 ETF）。<br>· 非当日买入（已过 T+1）按<b>当前价</b>卖出<br>· 当日买入（未过 T+1）按<b>下一交易日开盘价</b>卖出<br><b style="color:var(--warn)">每局仅可使用一次，使用后不可恢复。</b>确定使用吗？</div>
     <div class="modal-btns">
       <button id="modal-repool-cancel">取消</button>
       <button id="modal-repool-ok" class="primary">确认更换</button>
