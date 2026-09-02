@@ -96,8 +96,11 @@ input,select{background:var(--bg);color:var(--text);border:1px solid var(--line)
 .si-g{font-size:11px}
 .si-hold{position:absolute;right:10px;bottom:2px;font-size:10px;color:var(--dim)}
 #chart-tools{display:flex;gap:6px;padding:6px 10px;border-bottom:1px solid var(--line);
-  align-items:center;background:var(--panel)}
+  align-items:center;background:var(--panel);flex-wrap:wrap;row-gap:5px}
 #chart-tools .lb{color:var(--dim);font-size:11px;margin-right:2px}
+#sub-bar{display:inline-flex;gap:4px;align-items:center;flex-wrap:wrap}
+.sub-btn{padding:2px 8px;font-size:11px;border-radius:5px;line-height:1.5}
+#sub-add{font-size:11px;padding:2px 4px;max-width:120px}
 #chart-wrap{flex:1;display:flex;gap:6px;padding:6px 10px;min-height:0;align-items:center}
 #main-chart,#chip-chart{border-radius:6px;background:var(--panel)}
 #mini-wrap{height:146px;padding:0 10px 6px;display:flex;flex-direction:column}
@@ -261,13 +264,32 @@ input,select{background:var(--bg);color:var(--text);border:1px solid var(--line)
 
     <div class="col-mid">
       <div id="chart-tools">
-        <span class="lb">副图</span>
-        <button id="btn-sub-vol" class="on">成交量</button>
-        <button id="btn-sub-macd" class="on">MACD</button>
-        <button id="btn-sub-kdj" class="on">KDJ</button>
+        <span class="lb">副图指标</span>
+        <span id="sub-bar">
+          <button class="sub-btn on" data-k="vol">成交量</button>
+          <button class="sub-btn on" data-k="macd">MACD</button>
+          <button class="sub-btn on" data-k="kdj">KDJ</button>
+        </span>
+        <select id="sub-add" title="添加一个副图指标窗口（最多同时显示5个）">
+          <option value="">+ 副图指标</option>
+          <option value="vol">成交量 VOL</option>
+          <option value="macd">MACD 平滑异同</option>
+          <option value="kdj">KDJ 随机指标</option>
+          <option value="rsi">RSI 相对强弱</option>
+          <option value="cci">CCI 顺势指标</option>
+          <option value="wr">WR 威廉指标</option>
+          <option value="bias">BIAS 乖离率</option>
+          <option value="obv">OBV 能量潮</option>
+          <option value="dmi">DMI 趋向指标</option>
+          <option value="atr">ATR 真实波幅</option>
+          <option value="roc">ROC 变动率</option>
+          <option value="mtm">MTM 动量线</option>
+          <option value="vr">VR 量变率</option>
+          <option value="psy">PSY 心理线</option>
+        </select>
         <button id="btn-boll">布林带</button>
         <button id="btn-chip">筹码峰</button>
-        <span class="lb" style="margin-left:10px">滚轮缩放 · 拖动平移 · 双击复位</span>
+        <span class="lb" style="margin-left:4px">滚轮缩放 · 双击复位</span>
       </div>
       <div id="chart-wrap">
         <canvas id="main-chart"></canvas>

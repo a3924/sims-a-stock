@@ -26,6 +26,26 @@
     { k: 'etf_512000', n: '券商ETF' }
   ].concat(OV ? [{ k: 'oamv', n: '0AMV 活跃市值' }] : []);
 
+  // 副图指标目录（同花顺常用副图：VOL/MACD/KDJ/RSI/CCI/WR/BIAS/OBV/DMI/ATR/ROC/MTM/VR/PSY）
+  var SUB_ORDER = ['vol', 'macd', 'kdj', 'rsi', 'cci', 'wr', 'bias', 'obv', 'dmi', 'atr', 'roc', 'mtm', 'vr', 'psy'];
+  var SUB_META = {
+    vol: { l: '成交量', t: 'VOL 成交量' },
+    macd: { l: 'MACD', t: 'MACD(12,26,9) 平滑异同' },
+    kdj: { l: 'KDJ', t: 'KDJ(9,3,3) 随机指标' },
+    rsi: { l: 'RSI', t: 'RSI(6,12,24) 相对强弱' },
+    cci: { l: 'CCI', t: 'CCI(14) 顺势指标' },
+    wr: { l: 'WR', t: 'WR(10,6) 威廉指标' },
+    bias: { l: 'BIAS', t: 'BIAS(6,12,24) 乖离率' },
+    obv: { l: 'OBV', t: 'OBV(30) 能量潮' },
+    dmi: { l: 'DMI', t: 'DMI(14) 趋向指标' },
+    atr: { l: 'ATR', t: 'ATR(14) 真实波幅' },
+    roc: { l: 'ROC', t: 'ROC(12,6) 变动率' },
+    mtm: { l: 'MTM', t: 'MTM(12,6) 动量线' },
+    vr: { l: 'VR', t: 'VR(26,6) 成交量变异率' },
+    psy: { l: 'PSY', t: 'PSY(12,6) 心理线' }
+  };
+  var MAX_SUB = 5;   // 同时最多显示副图窗口数（主图高度会按数量收缩）
+
   function seriesOf(k) {
     if (k && k.indexOf('etf_') === 0) return ET[k.slice(4)] || null;
     return k === 'oamv' ? OV : IX[k];
@@ -34,7 +54,7 @@
   // 游戏中隐藏真实日期（只显示相对交易日 T+n），真实区间仅在结算页"显示真实日期"揭晓。
   var HIDE = true;
   var GAME_TITLE = '我的模拟人生·A股版';   // 游戏名（多处复用）
-  var GAME_VERSION = 'v20260902.10';   // 构建版本号：每次改动 JS 后累加，便于在网页上核对是否加载到最新代码
+  var GAME_VERSION = 'v20260902.11';   // 构建版本号：每次改动 JS 后累加，便于在网页上核对是否加载到最新代码
 
   // 全局日期轴索引，用于相对交易日换算
   var DAY_IDX = {};
@@ -354,6 +374,7 @@
       chipChart = new ChartEng.ChipChart(el('chip-chart'));
       miniChart = new ChartEng.KChart(el('mini-chart'), { subs: ['vol'], showMa: true, showBoll: false });
     }
+    refreshSubBar();
     fillSelect(el('mini-sel'), miniSel);
     el('mini-sel').onchange = function () { miniSel = this.value; renderGame(); };
     fillMultiAdds();
@@ -1113,9 +1134,16 @@
     el('multi-add-ix').onchange = function () { if (this.value) { addMulti('index', this.value); this.value = ''; } };
     el('multi-add-st').onchange = function () { if (this.value) { addMulti('stock', null, this.value); this.value = ''; } };
     el('modal-settle').addEventListener('click', function (e) { if (e.target === this) closeSettleModal(); });
-    el('btn-sub-vol').onclick = function () { toggleSub('vol'); };
-    el('btn-sub-macd').onclick = function () { toggleSub('macd'); };
-    el('btn-sub-kdj').onclick = function () { toggleSub('kdj'); };
+    // 副图指标：点击按钮开/关，下拉选择直接加入
+    el('sub-bar').addEventListener('click', function (e) {
+      var b = e.target;
+      while (b && b !== this && !(b.dataset && b.dataset.k)) b = b.parentNode;
+      if (b && b !== this && b.dataset.k) toggleSub(b.dataset.k);
+    });
+    el('sub-add').addEventListener('change', function () {
+      var k = this.value;
+      if (k) { addSubBy(k); this.value = ''; }
+    });
     el('btn-boll').onclick = function () { mainChart.opts.showBoll = !mainChart.opts.showBoll; renderGame(); };
     el('btn-chip').onclick = function () {
       chipOn = !chipOn;
@@ -1135,15 +1163,39 @@
       if (e.key === 's' || e.key === 'S') sell();
     });
   }
+  // ---------- 副图指标切换 ----------
+  function refreshSubBar() {
+    var bar = el('sub-bar');
+    if (!bar || !mainChart) return;
+    var subs = mainChart.opts.subs || [];
+    // 把已开启的指标按 SUB_ORDER 顺序渲染为按钮，未开启的显示为灰态可点（同花顺副图可随时勾选）
+    var html = '';
+    SUB_ORDER.forEach(function (k) {
+      var on = subs.indexOf(k) >= 0;
+      html += '<button class="sub-btn' + (on ? ' on' : '') + '" data-k="' + k +
+        '" title="' + SUB_META[k].t + '">' + SUB_META[k].l + '</button>';
+    });
+    bar.innerHTML = html;
+  }
   function toggleSub(k) {
+    if (!mainChart) return;
     var subs = mainChart.opts.subs;
     var i = subs.indexOf(k);
     if (i >= 0) { if (subs.length <= 1) return; subs.splice(i, 1); }
-    else { if (subs.length >= 3) return; subs.push(k); }
-    mainChart.draw();
-    el('btn-sub-vol').className = subs.indexOf('vol') >= 0 ? 'on' : '';
-    el('btn-sub-macd').className = subs.indexOf('macd') >= 0 ? 'on' : '';
-    el('btn-sub-kdj').className = subs.indexOf('kdj') >= 0 ? 'on' : '';
+    else {
+      if (subs.length >= MAX_SUB) { toast('最多同时显示 ' + MAX_SUB + ' 个副图，请先关闭一个'); return; }
+      subs.push(k);
+    }
+    refreshSubBar();
+    if (!multiOn) renderGame(); else mainChart.draw();
+  }
+  function addSubBy(k) {
+    if (!mainChart) return;
+    if (mainChart.opts.subs.indexOf(k) >= 0) { toast('该副图已显示'); return; }
+    if (mainChart.opts.subs.length >= MAX_SUB) { toast('最多同时显示 ' + MAX_SUB + ' 个副图，请先关闭一个'); return; }
+    mainChart.opts.subs.push(k);
+    refreshSubBar();
+    if (!multiOn) renderGame(); else mainChart.draw();
   }
 
   // ---------- 结算确认弹窗 ----------
