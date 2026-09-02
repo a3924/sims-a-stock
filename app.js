@@ -34,7 +34,7 @@
   // 游戏中隐藏真实日期（只显示相对交易日 T+n），真实区间仅在结算页"显示真实日期"揭晓。
   var HIDE = true;
   var GAME_TITLE = '我的模拟人生·A股版';   // 游戏名（多处复用）
-  var GAME_VERSION = 'v20260902.6';   // 构建版本号：每次改动 JS 后累加，便于在网页上核对是否加载到最新代码
+  var GAME_VERSION = 'v20260902.8';   // 构建版本号：每次改动 JS 后累加，便于在网页上核对是否加载到最新代码
 
   // 全局日期轴索引，用于相对交易日换算
   var DAY_IDX = {};
@@ -276,7 +276,7 @@
       html += '<div class="pool-item' + (p.code === S.sel ? ' on' : '') + '" data-code="' + p.code + '">' +
         '<div class="pi-name">' + p.name + '<span class="tag t-' + p.cat + '">' +
         ({ white: '白马', blue: '蓝筹', monster: '妖股', st: 'ST', cycle: '周期', etf: 'ETF' })[p.cat] + '</span></div>' +
-        '<div class="pi-code">' + p.code + ' · ' + p.ind + '</div>' +
+        '<div class="pi-code">' + p.ind + '</div>' +
         '<div class="pi-px">' + (px != null ? px.toFixed(2) : '停牌') + '</div></div>';
     });
     el('pool-list').innerHTML = html;
@@ -302,7 +302,7 @@
     var st = KL.stocks[S.sel], ei = idxOf(S.sel);
     if (ei == null) ei = lastIdxBefore(S.sel, DAYS[S.curIdx]);
     selCharts[0].resize(w, h);
-    selCharts[0].opts.title = st.name + ' ' + S.sel;
+    selCharts[0].opts.title = st.name;
     selCharts[0].opts.baseIdx = HIDE ? ei : null;
     selCharts[0].setData(st, ei);
     for (var i = 1; i < 4; i++) {
@@ -361,16 +361,17 @@
   }
 
   var mainChart = null, chipChart = null, miniChart = null, miniSel = 'sh_index';
+  var chipOn = false;   // 筹码峰显示开关（默认关闭）
 
   function layout() {
     var wrap = el('chart-wrap');
     var wrapW = wrap.clientWidth, ch = wrap.clientHeight;
     if (wrapW <= 0 || ch <= 0) return;
     var gap = 6, padX = 20;
-    var chipW = Math.min(226, Math.max(150, Math.round(wrapW * 0.28)));
+    var chipW = chipOn ? Math.min(226, Math.max(150, Math.round(wrapW * 0.28))) : 0;
     var cw = Math.max(160, wrapW - chipW - gap - padX);
     mainChart.resize(cw, ch);
-    chipChart.resize(chipW, ch);
+    if (chipOn) chipChart.resize(chipW, ch);
     var mw = el('mini-wrap');
     // 上证指数栏与主图个股 K 线同宽、左缘对齐（两者 padL/padR 一致），K 线横向位置完全对齐
     miniChart.resize(cw, Math.max(60, mw.clientHeight - 30));
@@ -439,11 +440,11 @@
 
     // 主图 / 筹码峰 / 大盘
     var mi = i != null ? i : lastIdxBefore(S.sel, date);   // 当前游戏日（个股序列）下标
-    mainChart.opts.title = st.name + ' ' + S.sel;
+    mainChart.opts.title = st.name;
     mainChart.opts.baseIdx = HIDE ? mi : null;             // 以当前游戏日为基准：最右永远=今日，向左 T-1/T-2…
     mainChart.setData(st, mi);
     chipChart.hideDate = HIDE;
-    chipChart.setData(S.sel, date, (mainChart._lo != null)
+    if (chipOn) chipChart.setData(S.sel, date, (mainChart._lo != null)
       ? { lo: mainChart._lo, hi: mainChart._hi, top: mainChart._priceTop, bot: mainChart._priceBot }
       : null);
     drawMini();
@@ -460,7 +461,7 @@
       var pl = pos && px ? (px - pos.cost) / pos.cost * 100 : 0;
       html += '<div class="st-item' + (p.code === S.sel ? ' on' : '') + '" data-code="' + p.code + '">' +
         '<div class="si-l"><div class="si-n">' + p.name + '</div>' +
-        '<div class="si-c">' + p.code + (susp ? ' <i>停牌</i>' : '') + ' <span class="tag t-' + p.cat + '">' + ({ white: '白马', blue: '蓝筹', monster: '妖股', st: 'ST', cycle: '周期', etf: 'ETF' })[p.cat] + '</span></div></div>' +
+        '<div class="si-c">' + (susp ? '<i>停牌</i> ' : '') + '<span class="tag t-' + p.cat + '">' + ({ white: '白马', blue: '蓝筹', monster: '妖股', st: 'ST', cycle: '周期', etf: 'ETF' })[p.cat] + '</span></div></div>' +
         '<div class="si-r"><div class="si-p ' + cls(chg) + '">' + px.toFixed(2) + '</div>' +
         '<div class="si-g ' + cls(chg) + '">' + (susp ? '--' : pct(chg)) + '</div></div>' +
         (pos ? '<div class="si-hold">持' + pos.shares + '股 <span class="' + cls(pl) + '">' + pct(pl) + '</span></div>' : '') +
@@ -579,7 +580,7 @@
     var st = KL.stocks[S.sel], date = DAYS[S.curIdx];
     var i = idxAt(S.sel, date), px = lastPx(S.sel, date);
     var pos = S.positions.filter(function (x) { return x.code === S.sel; })[0];
-    el('tb-name').textContent = st.name + ' ' + S.sel;
+    el('tb-name').textContent = st.name;
     el('tb-px').textContent = px.toFixed(2) + (i == null ? ' (停牌不可交易)' : '');
     var lim = limitOf(S.sel, st.cat);
     var pc = prevClose(S.sel, date), upP = pc ? (pc * (1 + lim)) : 0, dnP = pc ? (pc * (1 - lim)) : 0;
@@ -654,6 +655,23 @@
     var lots = Math.floor(S.cash / (px * 100 * 1.0003));
     el('tb-num').value = lots;
     if (lots > 0) buy(); else toast('资金不足一手');
+  }
+  // 按可用资金比例买入（frac=0.5 半仓 / 0.25 四分之一仓）
+  function buyFrac(frac) {
+    var code = S.sel, px = lastPx(code, DAYS[S.curIdx]);
+    var lots = Math.floor(S.cash * frac / (px * 100 * 1.0003));
+    el('tb-num').value = lots;
+    if (lots > 0) buy(); else toast('资金不足一手');
+  }
+  // 按持仓比例卖出
+  function sellFrac(frac) {
+    var pos = S.positions.filter(function (x) { return x.code === S.sel; })[0];
+    if (!pos) return toast('无持仓');
+    if (pos.buyIdx >= S.curIdx) return toast('T+1 限制：当日买入不可卖出');
+    var lots = Math.floor(pos.shares * frac / 100);
+    if (lots < 1) return toast('持仓仅 ' + pos.shares + ' 股，不足一手按比例卖出，请用「全卖」');
+    el('tb-num').value = lots;
+    sell();
   }
 
   // ---------- 推进 ----------
@@ -1014,6 +1032,10 @@
     el('btn-sell').onclick = sell;
     el('btn-buymax').onclick = buyMax;
     el('btn-sellall').onclick = sellAll;
+    el('btn-buyhalf').onclick = function () { buyFrac(0.5); };
+    el('btn-sellhalf').onclick = function () { sellFrac(0.5); };
+    el('btn-buyquarter').onclick = function () { buyFrac(0.25); };
+    el('btn-sellquarter').onclick = function () { sellFrac(0.25); };
     el('btn-again').onclick = function () { newGame(); };
     el('btn-settle').onclick = openSettleModal;
     el('modal-settle-cancel').onclick = closeSettleModal;
@@ -1031,6 +1053,13 @@
     el('btn-sub-macd').onclick = function () { toggleSub('macd'); };
     el('btn-sub-kdj').onclick = function () { toggleSub('kdj'); };
     el('btn-boll').onclick = function () { mainChart.opts.showBoll = !mainChart.opts.showBoll; renderGame(); };
+    el('btn-chip').onclick = function () {
+      chipOn = !chipOn;
+      this.classList.toggle('on', chipOn);
+      el('chip-chart').style.display = chipOn ? '' : 'none';
+      layout();
+      if (!multiOn) renderGame();
+    };
     document.addEventListener('keydown', function (e) {
       if (el('screen-game').style.display === 'none') return;
       if (el('modal-settle').style.display !== 'none') return;
@@ -1074,7 +1103,7 @@
     var sel = el('multi-add-st');
     if (sel) {
       var h = '<option value="">+ 个股（池内）</option>';
-      S.pool.forEach(function (p) { h += '<option value="' + p.code + '">' + p.name + ' ' + p.code + '</option>'; });
+      S.pool.forEach(function (p) { h += '<option value="' + p.code + '">' + p.name + '</option>'; });
       sel.innerHTML = h;
     }
     var ix = el('multi-add-ix');
@@ -1178,7 +1207,7 @@
       }
       var end = seriesEndIdx(series, multiView.date);
       var maxI = seriesEndIdx(series, DAYS[S.curIdx]);   // 防未来函数：不超过当前游戏日
-      it.chart.opts.title = (it.kind === 'stock' ? KL.stocks[it.code].name + ' ' + it.code : series.name);
+      it.chart.opts.title = (it.kind === 'stock' ? KL.stocks[it.code].name : series.name);
       it.chart.opts.baseIdx = HIDE ? maxI : null;        // 以当前游戏日为基准：最右永远=今日
       it.chart.viewBars = multiView.viewBars;
       it.chart.resize(cw - 2, h - 2);
