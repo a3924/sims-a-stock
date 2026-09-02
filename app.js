@@ -34,7 +34,7 @@
   // 游戏中隐藏真实日期（只显示相对交易日 T+n），真实区间仅在结算页"显示真实日期"揭晓。
   var HIDE = true;
   var GAME_TITLE = '我的模拟人生·A股版';   // 游戏名（多处复用）
-  var GAME_VERSION = 'v20260902.5';   // 构建版本号：每次改动 JS 后累加，便于在网页上核对是否加载到最新代码
+  var GAME_VERSION = 'v20260902.6';   // 构建版本号：每次改动 JS 后累加，便于在网页上核对是否加载到最新代码
 
   // 全局日期轴索引，用于相对交易日换算
   var DAY_IDX = {};
@@ -468,7 +468,7 @@
     });
     el('stock-list').innerHTML = html;
     Array.prototype.forEach.call(el('stock-list').children, function (node) {
-      node.onclick = function () { S.sel = node.getAttribute('data-code'); renderGame(); };
+      node.onclick = function () { selectStock(node.getAttribute('data-code')); };
     });
 
     renderPos();
@@ -524,14 +524,28 @@
     el('pos-list').innerHTML = h;
     el('pos-cnt').textContent = '持' + S.positions.length + '只 · ' + S.trades.length + '笔';
     Array.prototype.forEach.call(el('pos-list').querySelectorAll('.pos-item'), function (node) {
-      node.onclick = function () { S.sel = node.getAttribute('data-code'); renderGame(); };
+      node.onclick = function () { selectStock(node.getAttribute('data-code')); };
     });
     Array.prototype.forEach.call(el('pos-list').querySelectorAll('.pl-tr'), function (node) {
-      node.onclick = function () {
-        var c = node.getAttribute('data-code');
-        if (KL.stocks[c]) { S.sel = c; renderGame(); }
-      };
+      node.onclick = function () { selectStock(node.getAttribute('data-code')); };
     });
+  }
+
+  // 统一选股入口：普通模式刷新主界面；多图模式下同步第一张个股卡片跟随切换
+  function selectStock(code) {
+    if (!code || !KL.stocks[code]) return;
+    S.sel = code;
+    if (multiOn) {
+      Array.prototype.forEach.call(el('stock-list').children, function (node) {
+        node.classList.toggle('on', node.getAttribute('data-code') === code);
+      });
+      for (var i = 0; i < multiItems.length; i++) {
+        if (multiItems[i].kind === 'stock') { multiItems[i].code = code; break; }
+      }
+      renderMulti();
+    } else {
+      renderGame();
+    }
   }
 
   function renderNews(date) {
@@ -1157,6 +1171,11 @@
       if (!it.chart) it.chart = new ChartEng.KChart(it.canvas, { subs: ['vol'], showMa: true, showBoll: false, onView: onMultiView });
       var series = it.kind === 'stock' ? KL.stocks[it.code] : seriesOf(it.key);
       if (!series) return;
+      // 头部（下拉框/标题）与 it.code 保持同步（左侧点股联动时 code 会变）
+      if (it.kind === 'stock' && it.head) {
+        var hsel = it.head.querySelector('.mc-sel');
+        if (hsel && hsel.value !== it.code) hsel.value = it.code;
+      }
       var end = seriesEndIdx(series, multiView.date);
       var maxI = seriesEndIdx(series, DAYS[S.curIdx]);   // 防未来函数：不超过当前游戏日
       it.chart.opts.title = (it.kind === 'stock' ? KL.stocks[it.code].name + ' ' + it.code : series.name);
